@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Autor/a: Carmen Lardin Sanchez
+# Author: Carmen Lardin Sanchez
 
 import rospy
 import smach
@@ -14,24 +14,23 @@ from BT_Evasion import RobotContext, EvasionState, monitor_teclado
 
 class EstadoNavegacionRemota(smach.State):
     """
-    Este estado delega el trabajo al nodo de navegación externo.
-    Mientras está activo, publica True. Si el LIDAR detecta peligro, publica False.
+    This state delegates work to the external navigation node.
+    While active, it publishes True. If the LIDAR detects danger, it publishes False.
     """
     def __init__(self, robot_context):
         smach.State.__init__(self, outcomes=['finalizado', 'interrumpido'])
         self.robot = robot_context
-        # NUEVO: Publicador para dar permiso al otro nodo
         self.pub_hab = rospy.Publisher('/habilitar_navegacion', Bool, queue_size=1)
 
     def execute(self, userdata):
-        rospy.loginfo("Habilitando nodo de navegación externo...")
+        rospy.loginfo("Enabling external navigation node...")
         rate = rospy.Rate(10) 
         
         while not rospy.is_shutdown():
-            # 1. Si el MonitorState detecta peligro y pide interrumpir este estado...
+            # If MonitorState detects danger and requests to interrupt this state...
             if self.preempt_requested():
-                rospy.logwarn("Peligro detectado. Frenando nodo de navegación externo.")
-                self.pub_hab.publish(False) # Quitamos permiso
+                rospy.logwarn("Danger detected. Braking external navigation node.")
+                self.pub_hab.publish(False) # Revoke permission
                 self.service_preempt()
                 return 'interrumpido'
             
@@ -39,7 +38,7 @@ class EstadoNavegacionRemota(smach.State):
                 self.pub_hab.publish(False)
                 return 'interrumpido'
             
-            # 2. Si todo está bien, mantenemos el permiso activo
+            # If everything is OK, keep the permission active
             self.pub_hab.publish(True)
             rate.sleep()
             
@@ -47,17 +46,17 @@ class EstadoNavegacionRemota(smach.State):
 
 def crear_condicion_choque(robot_instancia):
     def callback(userdata, msg):
-        # Llamamos a la funcion original para que actualice las distancias en robot.distancias_lidar
+        # Call the original function to update distances in robot.distancias_lidar
         robot_instancia.cb_lidar(msg) 
         
-        # Ahora evaluamos la seguridad usando los datos que cb_lidar acaba de guardar
+        # Evaluate safety using the data that cb_lidar just saved
         distancia_frontal = robot_instancia.distancias_lidar[0]
         
         if distancia_frontal < robot_instancia.umbral_obstaculo:
             rospy.logwarn("--- MONITOR: Peligro de choque detectado ---")
-            return False  # ESTO dispara la transicion a Evasion (BT)
+            return False  # Triggers the transition to Evasion (BT)
         
-        return True # Todo OK, seguimos con el comportamiento normal
+        return True # Everything OK, continue with normal behavior
     return callback
 
 robot_global = None
@@ -112,7 +111,4 @@ if __name__ == '__main__':
     finally:
         if robot_global:
             robot_global.detener()
-        # Esto se ejecuta SIEMPRE al cerrar el programa
-        print("Cerrando programa con seguridad...")
-        # Intentamos una ultima parada manual si el nodo sigue vivo
-        # o simplemente imprimimos confirmacion.
+        print("Closing program safely..")

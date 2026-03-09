@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Autor/a: Carmen Lardin Sanchez
+# Author: Carmen Lardin Sanchez
 
 import rospy
 import numpy as np
@@ -10,6 +10,7 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Bool
 
+# HSV Thresholds for Red color (handling the wrap-around at 180 degrees)
 redBajo1 = np.array([0, 100, 20], np.uint8)
 redAlto1 = np.array([8, 255, 255], np.uint8)
 redBajo2 = np.array([175, 100, 20], np.uint8)
@@ -26,7 +27,7 @@ def visualizar(elem1, elem2):
 
 def detect_color(cv_image):
     try:
-        # 1. Corregimos el desempaquetado de la imagen
+        # Image dimensions and splitting into thirds for lateral detection
         alto, ancho, _ = cv_image.shape
         tercio = ancho // 3
 
@@ -37,24 +38,24 @@ def detect_color(cv_image):
         
         _, contornos, _ = cv.findContours(maskRed, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 	
-	    # Visualizar la imagen recivida, mayor coste
+	    # Optional: Visualize received image (higher computational cost)
         #visualizar(cv_image, maskRed)
         
-        # Variable por defecto si no encontramos nada
+        # Default position if nothing is found
         posicion = "ninguna"
 
         if len(contornos) > 0:
-            # Encontramos el contorno más grande de todos
+            # Find the largest contour
             c = max(contornos, key=cv.contourArea)
             area = cv.contourArea(c)
             
             if area > 1000:
-                # Encontramos la coordenada X del centro del objeto
+                # Calculate the X coordinate of the object's center (Centroid)
                 M = cv.moments(c)
                 if M["m00"] != 0:
-                    cx = int(M["m10"] / M["m00"]) # Suma de todas las posiciones en X entre el numero total de pixeles (Da el centro)
+                    cx = int(M["m10"] / M["m00"]) # Sum of X positions divided by total pixels
                     
-                    # Comprobamos en qué zona cae el centro 'cx'
+                    # Determine which zone the center 'cx' falls into
                     if cx < tercio:
                         posicion = "izquierda"
                     elif cx > (2 * tercio):
@@ -62,39 +63,39 @@ def detect_color(cv_image):
                     else:
                         posicion = "centro"
                         
-                    rospy.loginfo_throttle(1, "[CAMARA] Objeto visto")
+                    rospy.loginfo_throttle(1, "[CAMERA] Object detected")
 
         return posicion
 
     except Exception as e:
-        rospy.logerr("Error procesando imagen: %s", str(e))
+        rospy.logerr("Error processing image: %s", str(e))
         return "error"
     
 def navegar():
     global navegacion_habilitada, imagenRGB
     rate = rospy.Rate(10) # 10 Hz
-    rospy.loginfo_throttle(1, "Navegación ciega activa...")
+    rospy.loginfo_throttle(1, "Blind navigation active...")
 
     while not rospy.is_shutdown():
         #if navegacion_habilitada:
         if imagenRGB is not None:
             rospy.loginfo("[NAVEGACION] Buscando color...")
             if detect_color(imagenRGB) == "centro":
-                rospy.loginfo("[NAVEGACION] Objeto CENTRO.")
+                rospy.loginfo("[NAVIGATION] Object CENTERED.")
                 mover(0.2,0.0)
             elif detect_color(imagenRGB) == "izquierda":
-                rospy.loginfo("[NAVEGACION] Objeto IZQUIERDA.")
+                rospy.loginfo("[NAVIGATION] Object LEFT.")
                 mover(0.0,0.3)
             elif detect_color(imagenRGB) == "derecha":
-                rospy.loginfo("[NAVEGACION] Objeto DERECHA.")
+                rospy.loginfo("[NAVIGATION] Object RIGHT.")
                 mover(0.0,-0.3)
             else:
-                rospy.loginfo("[NAVEGACION] NO hay objeto.")
+                rospy.loginfo("[NAVIGATION] No object found.")
                 mover(0.0,0.0)
         else:	
-            rospy.loginfo("[NAVEGACION] Aun no hay datos.")
+            rospy.loginfo("[NAVIGATION] No data available yet.")
         #else:
-        #    rospy.logdebug_throttle(2, "Navegación pausada. BT al mando.")
+        #    rospy.logdebug_throttle(2, "Pause navigation. BT in control.")
         
         rate.sleep()
 
@@ -104,7 +105,7 @@ def cb_camara(msg):
             np_arr = np.frombuffer(msg.data, np.uint8)
             imagenRGB = cv.imdecode(np_arr, cv.IMREAD_COLOR)
         except Exception as e:
-            rospy.logerr("Error procesando imagen: %s", str(e))
+            rospy.logerr("Error processing image: %s", str(e))
 
 def cb_habilitar(msg):
     global navegacion_habilitada
@@ -119,22 +120,19 @@ def mover(x, z):
 
 def main():
     global pub_cmd
-
-    # 1. ESTE es ahora el nodo principal
-    rospy.init_node('robot_navegacion_principal')
+    rospy.init_node('robot_main_navigation')
 
     pub_cmd = rospy.Publisher('/cmd_vel_nav', Twist, queue_size=1)
     sub_cam = rospy.Subscriber('/camera/color/image_raw/compressed', CompressedImage, cb_camara)
     sub_nav = rospy.Subscriber('/habilitar_navegacion', Bool, cb_habilitar)
-    
-    # 4. Ejecutamos (esto mantendrá el programa vivo controlando el flujo)
+
     try:
         navegar()
     except rospy.ROSInterruptException:
         pass
     finally:
         mover(0.0,0.0)
-        print("Cerrando programa con seguridad...")
+        print("Safely shutting down program...")
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Autor/a: Carmen Lardin Sanchez
+# Author: Carmen Lardin Sanchez
 
 import rospy
 import cv2 as cv
@@ -31,7 +31,7 @@ def cb_camara(msg):
             np_arr = np.frombuffer(msg.data, np.uint8)
             imagenRGB = cv.imdecode(np_arr, cv.IMREAD_COLOR)
         except Exception as e:
-            rospy.logerr("Error procesando imagen: %s", str(e))
+            rospy.logerr("Error processing image: %s", str(e))
 
 def cb_habilitar(msg):
     global navegacion_habilitada
@@ -51,7 +51,7 @@ def visualizar(elem1, elem2):
 
 def detect_color(cv_image):
     try:
-        # 1. Corregimos el desempaquetado de la imagen
+        # Image dimensions and splitting into thirds for lateral detection
         alto, ancho, _ = cv_image.shape
         tercio = ancho // 3
 
@@ -62,24 +62,24 @@ def detect_color(cv_image):
         
         _, contornos, _ = cv.findContours(maskRed, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 	
-	    # Visualizar la imagen recivida, mayor coste
+	    # Optional: Visualize received image (higher computational cost)
         #visualizar(cv_image, maskRed)
         
-        # Variable por defecto si no encontramos nada
+        # Default position if nothing is found
         posicion = "ninguna"
 
         if len(contornos) > 0:
-            # Encontramos el contorno más grande de todos
+            # Find the largest contour
             c = max(contornos, key=cv.contourArea)
             area = cv.contourArea(c)
             
             if area > 1000:
-                # Encontramos la coordenada X del centro del objeto
+                # Calculate the X coordinate of the object's center (Centroid)
                 M = cv.moments(c)
                 if M["m00"] != 0:
-                    cx = int(M["m10"] / M["m00"]) # Suma de todas las posiciones en X entre el numero total de pixeles (Da el centro)
+                    cx = int(M["m10"] / M["m00"]) # Sum of X positions divided by total pixels
                     
-                    # Comprobamos en qué zona cae el centro 'cx'
+                    # Determine which zone the center 'cx' falls into
                     if cx < tercio:
                         posicion = "izquierda"
                     elif cx > (2 * tercio):
@@ -87,12 +87,12 @@ def detect_color(cv_image):
                     else:
                         posicion = "centro"
                         
-                    rospy.loginfo_throttle(1, "[CAMARA] Objeto visto")
+                    rospy.loginfo_throttle(1, "[CAMERA] Object detected")
 
         return posicion
 
     except Exception as e:
-        rospy.logerr("Error procesando imagen: %s", str(e))
+        rospy.logerr("Error processing image: %s", str(e))
         return "error"
     
 class NavegacionActiva(py_trees.behaviour.Behaviour):
@@ -102,12 +102,12 @@ class NavegacionActiva(py_trees.behaviour.Behaviour):
 
     def update(self):
         global navegacion_habilitada
-        # Si hay espacio suficiente enfrente, eXITO (termina el BT)
+        # If navigation is enable, SUCCESS
         if navegacion_habilitada:
-            rospy.loginfo("[BT_COLOR] Navegacion activa. {%s}", navegacion_habilitada)
+            rospy.loginfo("[BT_COLOR] Navigation active. {%s}", navegacion_habilitada)
             return py_trees.common.Status.SUCCESS
         else:
-            rospy.loginfo("[BT_COLOR] Navegacion NO activa. {%s}", navegacion_habilitada)
+            rospy.loginfo("[BT_COLOR] Navigation NOT active. {%s}", navegacion_habilitada)
             return py_trees.common.Status.FAILURE
         
 class AccionNavegar(py_trees.behaviour.Behaviour):
@@ -117,53 +117,53 @@ class AccionNavegar(py_trees.behaviour.Behaviour):
     def update(self):
         global imagenRGB
 
-        #rospy.loginfo_throttle(1.0, "[BT_COLOR] Navegando...")
+        #rospy.loginfo_throttle(1.0, "[BT_COLOR] Navigating...")
 
         if imagenRGB is None:
             rospy.loginfo("[NAVEGACION] Aun no hay datos.")
             return py_trees.common.Status.RUNNING
 
-        # Llamamos a la detección UNA sola vez por tick
+        # Call detection ONCE per tick
         resultado = detect_color(imagenRGB)
         
         if resultado == "centro":
-            rospy.loginfo_throttle(1, "[BT_COLOR] Avanzando al centro")
+            rospy.loginfo_throttle(1, "[BT_COLOR] Advancing to center")
             mover(0.2, 0.0)
         elif resultado == "izquierda":
             mover(0.0, 0.3)
         elif resultado == "derecha":
             mover(0.0, -0.3)
         else:
-            # Si no hay objeto, nos quedamos quietos esperando
+            # If there is no object, stay still waiting
             mover(0.0, 0.0)
 
         return py_trees.common.Status.RUNNING
     
     def terminate(self, new_status):
         """
-        Este metodo se ejecuta cuando el nodo se interrumpe
-        o el arbol decide que ya no debe ejecutarse.
+        This method runs when the node is interrupted
+        or the tree decides it should no longer execute.
         """
-        rospy.loginfo("[BT_COLOR] Deteniendo motores por interrupcion del nodo.")
+        rospy.loginfo("[BT_COLOR] Stopping motors due to node interruption.")
         mover(0.0, 0.0)
     
 def construir_arbol_color():
-    # Usamos Sequence para que AccionNavegar solo ocurra si NavegacionActiva es SUCCESS
-    root = py_trees.composites.Sequence(name="Seguimiento de Color", memory=False)
+    # Sequence so AccionNavegar only occurs if NavegacionActiva is SUCCESS
+    root = py_trees.composites.Sequence(name="Color Tracking", memory=False)
     
-    check_habilitado = NavegacionActiva("¿SMACH permite navegar?")
-    accion_seguir = AccionNavegar("Seguir Objeto")
+    check_habilitado = NavegacionActiva("Is navigation allowed?")
+    accion_seguir = AccionNavegar("Follow Object")
     
     root.add_children([check_habilitado, accion_seguir])
     return root
 
 def stop_robot():
-    """Función de seguridad que se ejecuta al apagar el nodo"""
-    rospy.loginfo("Cierre detectado: Deteniendo motores...")
-    # Creamos un publicador temporal por si el global ya se cerró
+    """Safety function that runs when the node is shut down"""
+    rospy.loginfo("Shutdown detected: Stopping motors...")
+    # Create a temporary publisher in case the global one is already closed
     p = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
     vel = Twist()
-    # Enviamos la parada varias veces para asegurar que entre en el buffer
+    # Send the stop command several times to ensure it enters the buffer
     for _ in range(5):
         p.publish(vel)
         rospy.sleep(0.05)
@@ -174,7 +174,7 @@ def main():
 
     rospy.init_node('bt_seguimiento_color')
 
-    # Registramos la función de parada
+    # Register the stop function
     rospy.on_shutdown(stop_robot)
 
     pub_cmd = rospy.Publisher('/cmd_vel_nav', Twist, queue_size=1)
@@ -198,7 +198,7 @@ def main():
         pass
     finally:
         mover(0.0,0.0)
-        print("Cerrando programa con seguridad...")
+        print("Closing program safely...")
 
 if __name__ == '__main__':
     main()
