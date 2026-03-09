@@ -1,3 +1,3 @@
 <launch>
-    <node pkg="control" type="subprograma2.py" name="nodo_control" output="screen" />
+    <node pkg="control" type="BT_subprograma.py" name="nodo_control" output="screen" />
 </launch>
