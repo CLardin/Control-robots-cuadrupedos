@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Autor/a: Carmen Lardin Sanchez
+# Author: Carmen Lardin Sanchez
 
 import rospy
 import py_trees
@@ -14,11 +14,11 @@ import BT_Evasion
 from BT_Evasion import RobotContext, monitor_teclado
 
 # ==========================================
-# Nodos de Comportamiento Personalizados
+# Custom Behavior Nodes
 # ==========================================
 
 class CondicionPeligro(py_trees.behaviour.Behaviour):
-    """Falla si el camino está libre, Éxito si hay peligro."""
+    """Fails if the path is clear, Success if danger is detected."""
     def __init__(self, name, robot_context):
         super(CondicionPeligro, self).__init__(name)
         self.robot = robot_context
@@ -28,7 +28,7 @@ class CondicionPeligro(py_trees.behaviour.Behaviour):
         dist_frente = self.robot.distancias_lidar[0]
         if not self.evadiendo:
             if dist_frente < self.robot.umbral_libre:
-                rospy.logwarn("--- MONITOR: Peligro de choque detectado ---")
+                rospy.logwarn("--- MONITOR: Collision danger detected ---")
                 self.evadiendo = True
                 return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.FAILURE
@@ -40,14 +40,14 @@ class CondicionPeligro(py_trees.behaviour.Behaviour):
 
 class GestionNavegacion(py_trees.behaviour.Behaviour):
     """
-    Doble función: 
-    1. Publica si la navegación está permitida en /habilitar_navegacion.
-    2. Si está permitida, actúa como puente para /cmd_vel_nav.
+    Dual function: 
+    1. Publishes if navigation is allowed on /habilitar_navegacion.
+    2. If allowed, acts as a bridge for /cmd_vel_nav.
     """
     def __init__(self, name, robot_context, permiso):
         super(GestionNavegacion, self).__init__(name)
         self.robot = robot_context
-        self.permiso = permiso # True o False
+        self.permiso = permiso # True or False
         self.pub_hab = rospy.Publisher('/habilitar_navegacion', Bool, queue_size=1)
         self.sub_ext = rospy.Subscriber('/cmd_vel_nav', Twist, self._cb_vel)
         self.vel_externa = Twist()
@@ -56,62 +56,62 @@ class GestionNavegacion(py_trees.behaviour.Behaviour):
         self.vel_externa = msg
 
     def update(self):
-        # Publicamos el estado para los otros programas
+        # Publish the state for other programs
         self.pub_hab.publish(self.permiso) 
 
         if self.permiso:
-            # Si hay permiso, el BT deja pasar la velocidad al robot real
+            # If permission is granted, the BT forwards the velocity to the real robot
             self.robot.pub_cmd.publish(self.vel_externa)
             return py_trees.common.Status.RUNNING
         else:
-            # Si no hay permiso (estamos en rama evasión), este nodo solo avisa y termina
+            # If no permission (we are in evasion branch), this node just notifies and finishes
             return py_trees.common.Status.SUCCESS
 
 # ==========================================
-# Construcción del Árbol Principal
+# Main Tree Construction
 # ==========================================
 
 def construir_arbol_principal(robot_context):
-    root = py_trees.composites.Selector(name="Control_Hibrido", memory=False)
+    root = py_trees.composites.Selector(name="Hybrid_Control", memory=False)
     
-    # --- RAMA 1: EVASIÓN (Prioridad) ---
-    rama_evasion = py_trees.composites.Sequence(name="Secuencia_Evasion", memory=False)
+    # --- BRANCH 1: EVASION (Priority) ---
+    rama_evasion = py_trees.composites.Sequence(name="Evasion_Sequence", memory=False)
     
-    check_peligro = CondicionPeligro("Peligro Detectado", robot_context)
+    check_peligro = CondicionPeligro("Danger Detected", robot_context)
     
-    # Avisamos que la navegación externa debe PARAR
-    avisar_parada = GestionNavegacion("Avisar_Bloqueo", robot_context, permiso=False)
+    # Notify that external navigation must STOP
+    avisar_parada = GestionNavegacion("Notify_Block", robot_context, permiso=False)
     
-    # El sub-árbol de rotación toma el control de /cmd_vel
+    # The rotation sub-tree takes the control of /cmd_vel
     sub_arbol_rotar = BT_Evasion.construir_arbol_evas()
     
     rama_evasion.add_children([check_peligro, avisar_parada, sub_arbol_rotar])
 
-    # --- RAMA 2: NAVEGACIÓN NORMAL ---
-    # Avisa que se puede navegar Y deja pasar los comandos de /cmd_vel_teclado
+    # --- BRANCH 2: NORMAL NAVIGATION ---
+    # Notifies that navigation is allowed and forwards /cmd_vel_nav commands
     rama_navegacion = GestionNavegacion("Permitir_Nav_Externa", robot_context, permiso=True)
 
     root.add_children([rama_evasion, rama_navegacion])
     
     return root
 # ==========================================
-# Bucle Principal
+# Main Loop
 # ==========================================
 
 def main():
     rospy.init_node('robot_bt_puro')
     robot_context = RobotContext()
     
-    # Inyectamos el contexto en el módulo BT_Evasion para que tu clase 'AccionRotar' 
-    # original encuentre la variable global 'robot' sin errores.
+    # Inject the context into the BT_Evasion module so the original 'AccionRotar'
+    # class can find the global 'robot' variable without errors.
     BT_Evasion.robot = robot_context
 
-    # Hilo de monitorización del teclado (Parada de Emergencia)
+    # Keyboard monitoring thread (Emergency Stop)
     hilo_teclado = threading.Thread(target=monitor_teclado)
     hilo_teclado.daemon = True
     hilo_teclado.start()
 
-    # Construimos y configuramos el árbol
+    # Build and configure the tree
     arbol_raiz = construir_arbol_principal(robot_context)
 
     arbol = py_trees_ros.trees.BehaviourTree(arbol_raiz)
@@ -119,21 +119,20 @@ def main():
 
     rospy.loginfo("--- Arquitectura 100% Behavior Tree Iniciada ---")
 
-    rate = rospy.Rate(10) # 10 Hz para la reactividad
+    rate = rospy.Rate(10) # 10 Hz for reactivity
     while not rospy.is_shutdown():
-        # Verificación de seguridad por teclado
+        # Keyboard safety check
         if robot_context.parada_emergencia:
             robot_context.detener()
             break
 
-        # El "latido" que evalúa todo el árbol de arriba a abajo
         arbol.tick()
         
         rate.sleep()
 
-    # Limpieza final
+    # Final cleanup
     robot_context.detener()
-    print("Programa terminado correctamente.")
+    print("Program terminated successfully.")
 
 if __name__ == '__main__':
     try:

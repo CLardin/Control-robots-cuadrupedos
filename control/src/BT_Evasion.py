@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Autor/a: Carmen Lardin Sanchez
+# Author: Carmen Lardin Sanchez
 
 import rospy
 import cv2 as cv
@@ -19,7 +19,7 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
 
-# --- Importaciones para lectura de teclado no bloqueante ---
+# --- Imports for non-blocking keyboard reading ---
 import sys
 import select
 import termios
@@ -36,11 +36,11 @@ class RobotContext:
         self.sub_cam_rgb = rospy.Subscriber('/camera/color/image_raw/compressed', CompressedImage, self.cb_camaraRGB)
         #self.sub_cam_depth = rospy.Subscriber('/camera/depth/image_rect_raw/compressed', CompressedImage, self.cb_camaraD)
         
-        # [Frente, Izquierda, Derecha, Atras]
+       # [Front, Left, Right, Rear]
         self.distancias_lidar = [10.0, 10.0, 10.0, 10.0] 
-        self.umbral_obstaculo = 0.7  # Metros para detectar colision
-        self.umbral_libre = 0.8      # Metros para considerar camino libre
-        self.parada_emergencia = False # Flag de seguridad
+        self.umbral_obstaculo = 0.7  # Meters to detect collision
+        self.umbral_libre = 0.8      # Meters to consider path clear
+        self.parada_emergencia = False # Safety flag
         self.imagenRGB = None
 
     def mover(self, x, z):
@@ -53,37 +53,37 @@ class RobotContext:
         self.mover(0.0, 0.0)
 
     def cb_lidar(self, msg):
-        # --- Tu leogica de LIDAR portada y corregida ---
-        #rospy.loginfo_throttle(1.0, "[LIDAR] Recibiendo array de %d puntos", len(msg.ranges))
+        # --- LIDAR logic ---
+        #rospy.loginfo_throttle(1.0, "[LIDAR] Receiving array of %d puntos", len(msg.ranges))
         ranges = np.array(msg.ranges)
         dist_lidar_temp = []
 
         def get_min_range_sector(centro_idx, window_size):
-            # Calcular indices manejando limites
+            # Calculate index handling boundaries
             start = max(0, centro_idx - window_size)
             end = min(len(ranges), centro_idx + window_size + 1)
             sector = ranges[start:end]
-            # Filtrar
+            # Filter
             validos = sector[(np.isfinite(sector)) & (sector > 0.1)]
             return float(np.min(validos)) if validos.size > 0 else 10.0
 
-        # FRENTE (Centro 180)
+        # FRONT (Center 180)
         dist_lidar_temp.append(get_min_range_sector(180, 45))
         
-        # IZQUIERDA (Centro 90)
+        # LEFT (Center 90)
         dist_lidar_temp.append(get_min_range_sector(90, 45))
         
-        # DERECHA (Centro 270)
+        # RIGHT (Center 270)
         dist_lidar_temp.append(get_min_range_sector(270, 45))
 
         self.distancias_lidar = dist_lidar_temp
-        # Debug throttle para no saturar consola
-        #rospy.loginfo_throttle(2.0, "LIDAR: F={:.2f} I={:.2f} D={:.2f}".format(self.distancias_lidar[0], self.distancias_lidar[1], self.distancias_lidar[2]))
-        #rospy.loginfo("[CALLBACK LIDAR] Frente real calculado: %.2f", self.distancias_lidar[0])
+        # Throttle debug to avoid saturating the console
+        #rospy.loginfo_throttle(2.0, "LIDAR: F={:.2f} L={:.2f} R={:.2f}".format(self.distancias_lidar[0], self.distancias_lidar[1], self.distancias_lidar[2]))
+        #rospy.loginfo("[LIDAR CALLBACK] Calculated real Front: %.2f", self.distancias_lidar[0])
 
     def cb_camaraRGB(self, msg):
         try:
-            # Decodificación
+            # Decoding
             np_arr = np.frombuffer(msg.data, np.uint8)
             cv_image = cv.imdecode(np_arr, cv.IMREAD_COLOR)
             self.imagenRGB = cv_image
@@ -91,14 +91,14 @@ class RobotContext:
             if cv_image is None:
                 return
           
-            # rospy.loginfo("[BT] Tipo de dato: %s", type(cv_image))
+            # rospy.loginfo("[BT] Data type: %s", type(cv_image))
 
         except Exception as e:
-            rospy.logerr("Error procesando imagen: %s", str(e))
+            rospy.logerr("Error processing image: %s", str(e))
 
     def cb_camaraD(self, msg):
         try:
-            # Decodificacion manual para PNGs de 16 bits
+            # Manual decoding for 16-bits PNGs
             np_arr = np.frombuffer(msg.data, np.uint8)
             cv_image = cv.imdecode(np_arr, cv.IMREAD_ANYDEPTH)
 
@@ -106,10 +106,10 @@ class RobotContext:
                 return
             
         except Exception as e:
-            rospy.logerr("Error procesando imagen: %s", str(e))
+            rospy.logerr("Error processing image: %s", str(e))
 
 # ==========================================
-# Behavior Tree (Para el estado de Evitacion)
+# Behavior Tree (Evasion State)
 # ==========================================
 
 class VerificarCaminoLibre(py_trees.behaviour.Behaviour):
@@ -118,9 +118,9 @@ class VerificarCaminoLibre(py_trees.behaviour.Behaviour):
 
     def update(self):
         global robot
-        # Si hay espacio suficiente enfrente, eXITO (termina el BT)
+        #  If there is enough space in front, SUCCESS (ends the BT)
         if robot.distancias_lidar[0] > robot.umbral_libre:
-            rospy.loginfo("[BT] Camino despejado. Terminando evasion.")
+            rospy.loginfo("[BT] Path clear. Ending evasion.")
             return py_trees.common.Status.SUCCESS
         else:
             return py_trees.common.Status.FAILURE
@@ -131,39 +131,43 @@ class AccionRotar(py_trees.behaviour.Behaviour):
 
     def update(self):
         global robot
-        # Girar hasta encontrar hueco
+        # Rotate until a gap is found
         izq_lidar = robot.distancias_lidar[1]
         der_lidar = robot.distancias_lidar[2]
 
-        rospy.loginfo_throttle(1.0, "[BT] Obstaculo cerca. Rotando...")
+        rospy.loginfo_throttle(1.0, "[BT] Obstacle nearby. Rotating...")
 
         if der_lidar > izq_lidar:
-            # Derecha esta mas libre -> Girar derecha (vel angular negativa)
-            #rospy.loginfo("Gira derecha der > izq {%.2f}", robot.distancias_lidar[0])
+            # Right is clearer -> Turn right (negative angular velocity)
+            #rospy.loginfo("Turning right R > L {%.2f}", robot.distancias_lidar[0])
             robot.mover(0.0, -0.3) 
         elif izq_lidar > der_lidar:
-            # Izquierda esta mas libre -> Girar izquierda (vel angular positiva)
-            #rospy.loginfo("Gira izquierda izq > derecha {%.2f}", robot.distancias_lidar[0])
+            # Left is clearer -> Turn left (positive angular velocity)
+            #rospy.loginfo("Turning left L > R {%.2f}", robot.distancias_lidar[0])
             robot.mover(0.0, 0.3)
         else:
-            # Son iguales -> Girar izquierda por defecto
-            #rospy.loginfo("Gira izquierda izq = derecha {%.2f}", robot.distancias_lidar[0])
+            # They are equal -> Turn left by default
+            #rospy.loginfo("Turning left L = R {%.2f}", robot.distancias_lidar[0])
             robot.mover(0.0, 0.3)
         return py_trees.common.Status.RUNNING
 
 def construir_arbol_evas():
-    # Estructura: Fallback (Selector)
-    # 1. Esta libre.. -> Si, SUCCESS (SMACH sale de evasieon)
-    # 2. Si no, Rotar -> RUNNING (SMACH se queda en evasieon)
+    # Structure: Fallback (Selector)
+    # 1. Is path clear? -> Yes, SUCCESS (exits evasion)
+    # 2. If not, Rotate -> RUNNING (stays in evasion)
     root = py_trees.composites.Selector(name="Evasion", memory=False)
     check = VerificarCaminoLibre("Camino Libre..")
     rotate = AccionRotar("Rotar")
-    root.add_children([check, rotate]) # Si check es SUCCESS returnea, si es FAILURE hace rotate
+    root.add_children([check, rotate]) # If check is SUCCESS returns, if FAILURE executes rotate
     return root
+
+# ==========================================
+# SMACH State (Optional)
+# ==========================================
 
 class EvasionState(smach.State):
     def __init__(self, robot_instance):
-        smach.State.__init__(self, outcomes=['despejado', 'emergencia'])
+        smach.State.__init__(self, outcomes=['despejado', 'emergencia']) # Clear, emergency
         global robot
 
         robot = robot_instance
@@ -172,18 +176,18 @@ class EvasionState(smach.State):
     def execute(self, userdata):
         rospy.loginfo("--- Iniciando Control por Behavior Tree ---")
         
-        rate = rospy.Rate(10) # 10Hz para el tick del árbol
+        rate = rospy.Rate(10) # 10Hz for tree tick
         while not rospy.is_shutdown():
-            # 1. Verificar si el hilo de teclado activó emergencia
+            # Check if keyboard thread triggered emergency
             if robot.parada_emergencia:
                 robot.detener()
                 return 'emergencia'
 
-            # 2. Hacer "Tick" al árbol
+            # Tick the tree
             self.arbol.tick_once()
             
-            # 3. Analizar el estado del árbol
-            # Si el árbol dice SUCCESS, es que VerificarCaminoLibre pasó
+            # Analyze tree status
+            # If the tree returns SUCCESS, it means VerificarCaminoLibre passed
             if self.arbol.status == py_trees.common.Status.SUCCESS:
                 robot.detener()
                 return 'despejado'
@@ -191,56 +195,56 @@ class EvasionState(smach.State):
             rate.sleep()
 
 # ==========================================
-# Hilo de Monitorizacion de Teclado (Opcional)
+# Keyboard Monitoring Thread (Optional)
 # ==========================================
 
 def getKey(timeout=0.1):
     settings = termios.tcgetattr(sys.stdin)
     key = None
     try:
-        # Poner la terminal en modo 'raw' (lectura directa)
+        # Set terminal to 'raw' mode (direct reading)
         tty.setcbreak(sys.stdin.fileno())
 
-        # Desactivar señales (ISIG)
-        # Esto evita que Ctrl+C mate el proceso y permite leerlo como '\x03'
+        # Disable signals (ISIG)
+        # This prevents Ctrl+C from killing the process and allows reading it as '\x03'
         mode = termios.tcgetattr(sys.stdin.fileno())
         mode[3] = mode[3] & ~termios.ISIG
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, mode)
 
-        # Verificar si hay algo en el buffer (select)
+        # Check if there is something in the buffer (select)
         rlist, _, _ = select.select([sys.stdin], [], [], timeout)
         if rlist:
             key = sys.stdin.read(1)
     except Exception as e:
         print(e)
     finally:
-        # Restaurar la configuracion original de la terminal
+        # Restore original terminal configuration
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
     return key
 
 def monitor_teclado():
     """
-    Este hilo corre en paralelo y verifica si se pulsa 's' o 'Espacio'.
+    This thread runs in parallel and checks if 's' or 'Space' is pressed.
     """
-    rospy.loginfo("--- MONITOR DE TECLADO ACTIVO: Pulsa 's' para PARADA DE EMERGENCIA ---")
-    
+    rospy.loginfo("--- KEYBOARD MONITOR ACTIVE: Press 's' for EMERGENCY STOP ---")
+
     while not rospy.is_shutdown():
-        # getKey tiene un pequeno timeout, asi que el bucle no gira a lo loco
+        # getKey has a small timeout, so the loop doesn't spin wildly
         key = getKey(timeout=0.2) 
         
         if key == 's'or key == ' ' or key == '\x03':
-            rospy.loginfo("\n\n PARADA DE EMERGENCIA DETECTADA (Tecla pulsada) \n")
+            rospy.loginfo("\n\n EMERGENCY STOP DETECTED (Key pressed) \n")
             
-            # 1. Bloquear comandos en el robot context
+            # Block commands in robot context
             if robot:
                 robot.parada_emergencia = True
                 
-                # 2. Mandar comandos de parada agresivamente (como en tu ejemplo C++)
+                # Send stop commands aggressively 
                 for _ in range(10):
                     robot.detener()
                     time.sleep(0.05)
             
-            # 3. Matar ROS
-            rospy.signal_shutdown("Usuario presiono parada de emergencia")
-            # 4. Salir del hilo
+            # Shutdown ROS
+            rospy.signal_shutdown("ser pressed emergency stop")
+            # Exit thread
             sys.exit(0)
