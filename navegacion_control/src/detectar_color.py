@@ -17,7 +17,6 @@ redAlto2 = np.array([179, 255, 255], np.uint8)
 
 navegacion_habilitada = None
 imagenRGB = None
-navegacion_habilitada = False
 pub_cmd = None
 
 def visualizar(elem1, elem2):
@@ -77,25 +76,25 @@ def navegar():
     rospy.loginfo_throttle(1, "Navegación ciega activa...")
 
     while not rospy.is_shutdown():
-        if navegacion_habilitada:
-            if imagenRGB is not None:
-                rospy.loginfo("[NAVEGACION] Buscando color...")
-                if detect_color(imagenRGB) == "centro":
-                    rospy.loginfo("[NAVEGACION] Objeto CENTRO.")
-                    mover(0.2,0.0)
-                elif detect_color(imagenRGB) == "izquierda":
-                    rospy.loginfo("[NAVEGACION] Objeto IZQUIERDA.")
-                    mover(0.0,0.3)
-                elif detect_color(imagenRGB) == "derecha":
-                    rospy.loginfo("[NAVEGACION] Objeto DERECHA.")
-                    mover(0.0,-0.3)
-                else:
-                    rospy.loginfo("[NAVEGACION] NO hay objeto.")
-                    mover(0.0,0.0)
-            else:	
-                rospy.loginfo("[NAVEGACION] Aun no hay datos.")
-        else:
-            rospy.logdebug_throttle(2, "Navegación pausada. BT al mando.")
+        #if navegacion_habilitada:
+        if imagenRGB is not None:
+            rospy.loginfo("[NAVEGACION] Buscando color...")
+            if detect_color(imagenRGB) == "centro":
+                rospy.loginfo("[NAVEGACION] Objeto CENTRO.")
+                mover(0.2,0.0)
+            elif detect_color(imagenRGB) == "izquierda":
+                rospy.loginfo("[NAVEGACION] Objeto IZQUIERDA.")
+                mover(0.0,0.3)
+            elif detect_color(imagenRGB) == "derecha":
+                rospy.loginfo("[NAVEGACION] Objeto DERECHA.")
+                mover(0.0,-0.3)
+            else:
+                rospy.loginfo("[NAVEGACION] NO hay objeto.")
+                mover(0.0,0.0)
+        else:	
+            rospy.loginfo("[NAVEGACION] Aun no hay datos.")
+        #else:
+        #    rospy.logdebug_throttle(2, "Navegación pausada. BT al mando.")
         
         rate.sleep()
 
@@ -124,7 +123,7 @@ def main():
     # 1. ESTE es ahora el nodo principal
     rospy.init_node('robot_navegacion_principal')
 
-    pub_cmd = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+    pub_cmd = rospy.Publisher('/cmd_vel_nav', Twist, queue_size=1)
     sub_cam = rospy.Subscriber('/camera/color/image_raw/compressed', CompressedImage, cb_camara)
     sub_nav = rospy.Subscriber('/habilitar_navegacion', Bool, cb_habilitar)
     

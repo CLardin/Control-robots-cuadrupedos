@@ -38,7 +38,7 @@ class RobotContext:
         
         # [Frente, Izquierda, Derecha, Atras]
         self.distancias_lidar = [10.0, 10.0, 10.0, 10.0] 
-        self.umbral_obstaculo = 0.6  # Metros para detectar colision
+        self.umbral_obstaculo = 0.7  # Metros para detectar colision
         self.umbral_libre = 0.8      # Metros para considerar camino libre
         self.parada_emergencia = False # Flag de seguridad
         self.imagenRGB = None
@@ -54,6 +54,7 @@ class RobotContext:
 
     def cb_lidar(self, msg):
         # --- Tu leogica de LIDAR portada y corregida ---
+        #rospy.loginfo_throttle(1.0, "[LIDAR] Recibiendo array de %d puntos", len(msg.ranges))
         ranges = np.array(msg.ranges)
         dist_lidar_temp = []
 
@@ -78,7 +79,8 @@ class RobotContext:
         self.distancias_lidar = dist_lidar_temp
         # Debug throttle para no saturar consola
         #rospy.loginfo_throttle(2.0, "LIDAR: F={:.2f} I={:.2f} D={:.2f}".format(self.distancias_lidar[0], self.distancias_lidar[1], self.distancias_lidar[2]))
-        
+        #rospy.loginfo("[CALLBACK LIDAR] Frente real calculado: %.2f", self.distancias_lidar[0])
+
     def cb_camaraRGB(self, msg):
         try:
             # Decodificación
@@ -107,7 +109,7 @@ class RobotContext:
             rospy.logerr("Error procesando imagen: %s", str(e))
 
 # ==========================================
-# Behavior Tree (Para el estado de Evitacieon)
+# Behavior Tree (Para el estado de Evitacion)
 # ==========================================
 
 class VerificarCaminoLibre(py_trees.behaviour.Behaviour):
@@ -174,6 +176,7 @@ class EvasionState(smach.State):
         while not rospy.is_shutdown():
             # 1. Verificar si el hilo de teclado activó emergencia
             if robot.parada_emergencia:
+                robot.detener()
                 return 'emergencia'
 
             # 2. Hacer "Tick" al árbol
@@ -188,7 +191,7 @@ class EvasionState(smach.State):
             rate.sleep()
 
 # ==========================================
-# Hilo de Monitorizacion de Teclado
+# Hilo de Monitorizacion de Teclado (Opcional)
 # ==========================================
 
 def getKey(timeout=0.1):
