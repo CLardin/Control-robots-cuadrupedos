@@ -22,7 +22,6 @@ redAlto2 = np.array([179, 255, 255], np.uint8)
 
 navegacion_habilitada = None
 imagenRGB = None
-navegacion_habilitada = False
 pub_cmd = None
 
 def cb_camara(msg):
