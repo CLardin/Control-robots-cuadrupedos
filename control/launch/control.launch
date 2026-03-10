@@ -1,3 +1,9 @@
 <launch>
-    <node pkg="control" type="BT_subprograma.py" name="nodo_control" output="screen" />
+    <node pkg="nodelet" type="nodelet" name="yocs_cmd_vel_mux" args="standalone yocs_cmd_vel_mux/CmdVelMuxNodelet" output="screen">
+        <param name="yaml_cfg_file" value="$(find control)/config/mux_prioridades.yaml"/>
+    </node>
+
+    <node pkg="control" type="BT_subprograma_MUX.py" name="nodo_control" output="screen">
+        <remap from="/cmd_vel_bt" to="/cmd_vel_bt_seguridad"/>
+    </node>
 </launch>
