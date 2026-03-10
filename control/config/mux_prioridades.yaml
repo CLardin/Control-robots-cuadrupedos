@@ -3,9 +3,9 @@ subscribers:
   - name: "Seguridad_BT"
     topic: "/cmd_vel_bt_seguridad"
     timeout: 0.5
-    priority: 10  # Prioridad MÁXIMA
+    priority: 10  # MAXIMUM Priority
   - name: "Control_Nav"
     topic: "/cmd_vel_nav"
     timeout: 0.5
-    priority: 5   # Prioridad BAJA
-publisher: "/cmd_vel" # El topic real que mueve al robot
+    priority: 5   # LOW Priority
+publisher: "/cmd_vel" # The original topic 
