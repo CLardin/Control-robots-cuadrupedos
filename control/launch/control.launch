@@ -1,0 +1,6 @@
+<launch>
+
+    <node pkg="control" type="BT_subprograma.py" name="nodo_control" output="screen">
+       </node>
+
+</launch>
